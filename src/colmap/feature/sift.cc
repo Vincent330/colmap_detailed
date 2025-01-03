@@ -898,63 +898,59 @@ void FindNearestNeighborsFlann(
   }
 }
 
-size_t FindBestMatchesOneWayFLANN(
-    const Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>&
-        indices,
-    const Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>&
-        distances,
-    const float max_ratio,
-    const float max_distance,
-    std::vector<int>* matches) {
+size_t FindBestMatchesOneWayFLANN(  // 定位
+    const Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>&indices, // 索引矩阵，包含每个特征点的匹配候选
+    const Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>&distances, // 距离矩阵，存储每个候选匹配的距离
+    const float max_ratio, // 比率阈值，用于比率测试
+    const float max_distance, // 距离阈值，用于限制最大匹配距离
+    std::vector<int>* matches) { // 最终匹配结果的输出，包含每个特征点的最佳匹配
   // SIFT descriptor vectors are normalized to length 512.
-  const float kDistNorm = 1.0f / (512.0f * 512.0f);
+  const float kDistNorm = 1.0f / (512.0f * 512.0f); // SIFT描述符向量被归一化到512的长度
 
-  size_t num_matches = 0;
-  matches->resize(indices.rows(), -1);
+  size_t num_matches = 0; // 记录有效匹配的数量
+  matches->resize(indices.rows(), -1); // 初始化匹配结果向量，大小与indices的行数一致，默认值为-1表示没有匹配
 
-  for (int d1_idx = 0; d1_idx < indices.rows(); ++d1_idx) {
-    int best_i2 = -1;
-    int best_dist = 0;
-    int second_best_dist = 0;
-    for (int n_idx = 0; n_idx < indices.cols(); ++n_idx) {
-      const int d2_idx = indices(d1_idx, n_idx);
-      const int dist = distances(d1_idx, n_idx);
-      if (dist > best_dist) {
+  for (int d1_idx = 0; d1_idx < indices.rows(); ++d1_idx) { // 循环遍历每个特征点，查找其最佳匹配
+    int best_i2 = -1; // 最佳匹配的索引
+    int best_dist = 0; // 最佳匹配的距离
+    int second_best_dist = 0; // 第二佳匹配的距离
+    for (int n_idx = 0; n_idx < indices.cols(); ++n_idx) { // 遍历每个特征点的多个候选匹配
+      const int d2_idx = indices(d1_idx, n_idx); // 当前特征点 d1_idx 的候选匹配点 d2_idx
+      const int dist = distances(d1_idx, n_idx); // 当前候选匹配的距离
+      if (dist > best_dist) { // 如果当前距离比最佳距离更远，则更新最佳匹配和第二佳匹配
         best_i2 = d2_idx;
         second_best_dist = best_dist;
         best_dist = dist;
-      } else if (dist > second_best_dist) {
+      } else if (dist > second_best_dist) { // 如果当前距离比第二佳匹配的距离更远，则更新第二佳匹配
         second_best_dist = dist;
       }
     }
 
     // Check if any match found.
-    if (best_i2 == -1) {
+    if (best_i2 == -1) { // 如果没有找到匹配，则跳过
       continue;
     }
 
-    const float best_dist_normed =
-        std::acos(std::min(kDistNorm * best_dist, 1.0f));
+    const float best_dist_normed = std::acos(std::min(kDistNorm * best_dist, 1.0f)); // 将最佳匹配距离进行归一化处理
 
     // Check if match distance passes threshold.
-    if (best_dist_normed > max_distance) {
+    if (best_dist_normed > max_distance) { // 如果最佳匹配的距离超过了最大距离阈值，则跳过
       continue;
     }
 
-    const float second_best_dist_normed =
-        std::acos(std::min(kDistNorm * second_best_dist, 1.0f));
+    const float second_best_dist_normed = std::acos(std::min(kDistNorm * second_best_dist, 1.0f)); // 将第二佳匹配的距离进行归一化处理
 
     // Check if match passes ratio test. Keep this comparison >= in order to
     // ensure that the case of best == second_best is detected.
-    if (best_dist_normed >= max_ratio * second_best_dist_normed) {
+    if (best_dist_normed >= max_ratio * second_best_dist_normed) { // 如果最佳匹配与第二佳匹配的比率大于max_ratio，则跳过
       continue;
     }
 
-    num_matches += 1;
-    (*matches)[d1_idx] = best_i2;
+    num_matches += 1;  // 有效匹配数量增加
+    (*matches)[d1_idx] = best_i2;  // 将最佳匹配的索引存储在结果中
   }
 
-  return num_matches;
+  return num_matches; // 返回匹配的数量
 }
 
 void FindBestMatchesFlann(
@@ -1015,16 +1011,16 @@ class SiftCPUFeatureMatcher : public FeatureMatcher {
     return std::make_unique<SiftCPUFeatureMatcher>(options);
   }
 
-  void Match(const std::shared_ptr<const FeatureDescriptors>& descriptors1,
+  void Match(const std::shared_ptr<const FeatureDescriptors>& descriptors1, // 定位！
              const std::shared_ptr<const FeatureDescriptors>& descriptors2,
              FeatureMatches* matches) override {
-    THROW_CHECK_NOTNULL(matches);
-    matches->clear();
+    THROW_CHECK_NOTNULL(matches); // 确保matches指针不为空
+    matches->clear(); // 清空matches，准备存储匹配结果
 
-    if (descriptors1 != nullptr) {
-      THROW_CHECK_EQ(descriptors1->cols(), 128);
-      descriptors1_ = descriptors1;
-      flann_index1_ = BuildFlannIndex(*descriptors1_);
+    if (descriptors1 != nullptr) { // 如果descriptors1非空
+      THROW_CHECK_EQ(descriptors1->cols(), 128); // 确保每个特征描述符的维度为128
+      descriptors1_ = descriptors1; // 将descriptors1存储到类成员变量
+      flann_index1_ = BuildFlannIndex(*descriptors1_); // 为descriptors1构建 FLANN 索引
     }
 
     if (descriptors2 != nullptr) {
@@ -1033,16 +1029,16 @@ class SiftCPUFeatureMatcher : public FeatureMatcher {
       flann_index2_ = BuildFlannIndex(*descriptors2_);
     }
 
-    THROW_CHECK_NOTNULL(descriptors1_);
+    THROW_CHECK_NOTNULL(descriptors1_); // 确保descriptors1_非空
     THROW_CHECK_NOTNULL(descriptors2_);
 
-    if (descriptors1_->rows() == 0 || descriptors2_->rows() == 0) {
+    if (descriptors1_->rows() == 0 || descriptors2_->rows() == 0) {  // 如果任一特征描述符集为空（即没有特征点）
       return;
     }
 
-    if (options_.brute_force_cpu_matcher) {
+    if (options_.brute_force_cpu_matcher) { // 如果开启了暴力匹配
       const Eigen::MatrixXi distances = ComputeSiftDistanceMatrix(
-          nullptr, nullptr, *descriptors1_, *descriptors2_, nullptr);
+          nullptr, nullptr, *descriptors1_, *descriptors2_, nullptr); // 计算 SIFT 特征描述符之间的距离矩阵
       FindBestMatchesBruteForce(distances,
                                 options_.max_ratio,
                                 options_.max_distance,
@@ -1050,7 +1046,7 @@ class SiftCPUFeatureMatcher : public FeatureMatcher {
                                 matches);
       return;
     }
-
+    // 若使用FLANN匹配，准备存储结果的矩阵
     Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>
         indices_1to2;
     Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>
@@ -1059,12 +1055,13 @@ class SiftCPUFeatureMatcher : public FeatureMatcher {
         indices_2to1;
     Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>
         distances_2to1;
-
+    // 找到descriptors1中每个特征描述符在descriptors2中的最近邻
     FindNearestNeighborsFlann(*descriptors1_,
                               *descriptors2_,
                               *flann_index2_,
                               &indices_1to2,
                               &distances_1to2);
+    // 如果开启了交叉检查，则反向查找descriptors2到descriptors1的最近邻
     if (options_.cross_check) {
       FindNearestNeighborsFlann(*descriptors2_,
                                 *descriptors1_,
@@ -1072,8 +1069,8 @@ class SiftCPUFeatureMatcher : public FeatureMatcher {
                                 &indices_2to1,
                                 &distances_2to1);
     }
-
-    FindBestMatchesFlann(indices_1to2,
+    // 使用FLANN匹配的结果（索引和距离矩阵）来找出最佳匹配
+    FindBestMatchesFlann(indices_1to2,  // 定位
                          distances_1to2,
                          indices_2to1,
                          distances_2to1,
@@ -1084,7 +1081,7 @@ class SiftCPUFeatureMatcher : public FeatureMatcher {
   }
 
   void MatchGuided(
-      const double max_error,
+      const double max_error,  // 最大容忍误差（用于匹配筛选）
       const std::shared_ptr<const FeatureKeypoints>& keypoints1,
       const std::shared_ptr<const FeatureKeypoints>& keypoints2,
       const std::shared_ptr<const FeatureDescriptors>& descriptors1,
@@ -1094,12 +1091,12 @@ class SiftCPUFeatureMatcher : public FeatureMatcher {
     two_view_geometry->inlier_matches.clear();
 
     if (descriptors1 != nullptr) {
-      THROW_CHECK_NOTNULL(keypoints1);
-      THROW_CHECK_EQ(descriptors1->rows(), keypoints1->size());
-      THROW_CHECK_EQ(descriptors1->cols(), 128);
-      keypoints1_ = keypoints1;
-      descriptors1_ = descriptors1;
-      flann_index1_ = BuildFlannIndex(*descriptors1_);
+      THROW_CHECK_NOTNULL(keypoints1); // 检查第一幅图像的特征点是否为空
+      THROW_CHECK_EQ(descriptors1->rows(), keypoints1->size()); // 检查描述符行数和特征点数量是否一致
+      THROW_CHECK_EQ(descriptors1->cols(), 128); // 检查每个描述符的维度（假设128维特征描述符）
+      keypoints1_ = keypoints1; // 保存特征点
+      descriptors1_ = descriptors1; // 保存描述符
+      flann_index1_ = BuildFlannIndex(*descriptors1_); // 构建FLANN索引（用于快速查找最近邻）
     }
 
     if (descriptors2 != nullptr) {
@@ -1111,30 +1108,30 @@ class SiftCPUFeatureMatcher : public FeatureMatcher {
       flann_index2_ = BuildFlannIndex(*descriptors2_);
     }
 
-    const float max_residual = max_error * max_error;
-
+    const float max_residual = max_error * max_error; // 最大误差的平方，作为匹配筛选的阈值
+    // 从two_view_geometry中提取基础矩阵和单应性矩阵
     const Eigen::Matrix3f F = two_view_geometry->F.cast<float>();
     const Eigen::Matrix3f H = two_view_geometry->H.cast<float>();
-
+    // 根据视几何类型选择不同的引导滤波器
     std::function<bool(float, float, float, float)> guided_filter;
     if (two_view_geometry->config == TwoViewGeometry::CALIBRATED ||
-        two_view_geometry->config == TwoViewGeometry::UNCALIBRATED) {
+        two_view_geometry->config == TwoViewGeometry::UNCALIBRATED) { // 对于已标定和未标定的情况，使用基础矩阵F进行引导滤波
       guided_filter =
           [&](const float x1, const float y1, const float x2, const float y2) {
-            const Eigen::Vector3f p1(x1, y1, 1.0f);
-            const Eigen::Vector3f p2(x2, y2, 1.0f);
+            const Eigen::Vector3f p1(x1, y1, 1.0f); // 第一幅图像的点坐标 (x1, y1)
+            const Eigen::Vector3f p2(x2, y2, 1.0f); // 第二幅图像的点坐标 (x2, y2)
             const Eigen::Vector3f Fx1 = F * p1;
             const Eigen::Vector3f Ftx2 = F.transpose() * p2;
             const float x2tFx1 = p2.transpose() * Fx1;
             return x2tFx1 * x2tFx1 /
                        (Fx1(0) * Fx1(0) + Fx1(1) * Fx1(1) + Ftx2(0) * Ftx2(0) +
                         Ftx2(1) * Ftx2(1)) >
-                   max_residual;
+                   max_residual; // 判断是否满足误差条件
           };
     } else if (two_view_geometry->config == TwoViewGeometry::PLANAR ||
                two_view_geometry->config == TwoViewGeometry::PANORAMIC ||
                two_view_geometry->config ==
-                   TwoViewGeometry::PLANAR_OR_PANORAMIC) {
+                   TwoViewGeometry::PLANAR_OR_PANORAMIC) { // 对于平面或全景图像，使用单应性矩阵H进行引导滤波
       guided_filter =
           [&](const float x1, const float y1, const float x2, const float y2) {
             const Eigen::Vector3f p1(x1, y1, 1.0f);
@@ -1146,22 +1143,22 @@ class SiftCPUFeatureMatcher : public FeatureMatcher {
     }
 
     THROW_CHECK(guided_filter);
-
+    // 计算特征点之间的距离矩阵
     const Eigen::MatrixXi dists = ComputeSiftDistanceMatrix(keypoints1_.get(),
                                                             keypoints2_.get(),
                                                             *descriptors1_,
                                                             *descriptors2_,
                                                             guided_filter);
-
+    // 初始化索引矩阵和距离矩阵
     Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>
-        indices_1to2(dists.rows(), dists.cols());
+        indices_1to2(dists.rows(), dists.cols()); // 记录从第一幅图像到第二幅图像的索引
     Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>
-        indices_2to1(dists.cols(), dists.rows());
+        indices_2to1(dists.cols(), dists.rows()); // 记录从第二幅图像到第一幅图像的索引
     Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>
-        distances_1to2 = dists;
+        distances_1to2 = dists; // 第一幅图像到第二幅图像的距离
     Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>
-        distances_2to1 = dists.transpose();
-
+        distances_2to1 = dists.transpose(); // 第二幅图像到第一幅图像的距离
+    // 为索引矩阵赋值，初始化为线性递增的索引
     for (int i = 0; i < indices_1to2.rows(); ++i) {
       indices_1to2.row(i) = Eigen::VectorXi::LinSpaced(
           indices_1to2.cols(), 0, indices_1to2.cols() - 1);
@@ -1170,7 +1167,7 @@ class SiftCPUFeatureMatcher : public FeatureMatcher {
       indices_2to1.row(i) = Eigen::VectorXi::LinSpaced(
           indices_2to1.cols(), 0, indices_2to1.cols() - 1);
     }
-
+    // 使用 FLANN 算法找到最佳匹配
     FindBestMatchesFlann(indices_1to2,
                          distances_1to2,
                          indices_2to1,
@@ -1288,13 +1285,13 @@ class SiftGPUFeatureMatcher : public FeatureMatcher {
   void Match(const std::shared_ptr<const FeatureDescriptors>& descriptors1,
              const std::shared_ptr<const FeatureDescriptors>& descriptors2,
              FeatureMatches* matches) override {
-    THROW_CHECK_NOTNULL(matches);
-    matches->clear();
+    THROW_CHECK_NOTNULL(matches); // 确保matches不为空
+    matches->clear(); // 清空旧的匹配结果
 
     std::lock_guard<std::mutex> lock(
-        *sift_match_gpu_mutexes_[sift_match_gpu_.gpu_index]);
+        *sift_match_gpu_mutexes_[sift_match_gpu_.gpu_index]); // 使用mutex锁保护对GPU资源的访问，确保线程安全
 
-    if (descriptors1 != nullptr) {
+    if (descriptors1 != nullptr) { // 如果descriptors1非空，初始化GPU中的描述子数据
       THROW_CHECK_EQ(descriptors1->cols(), 128);
       WarnIfMaxNumMatchesReachedGPU(*descriptors1);
       sift_match_gpu_.SetDescriptors(
@@ -1302,29 +1299,29 @@ class SiftGPUFeatureMatcher : public FeatureMatcher {
     }
 
     if (descriptors2 != nullptr) {
-      THROW_CHECK_EQ(descriptors2->cols(), 128);
-      WarnIfMaxNumMatchesReachedGPU(*descriptors2);
+      THROW_CHECK_EQ(descriptors2->cols(), 128); // 检查描述子的维度是否为128
+      WarnIfMaxNumMatchesReachedGPU(*descriptors2); // 如果最大匹配数已达，发出警告
       sift_match_gpu_.SetDescriptors(
           1, descriptors2->rows(), descriptors2->data());
     }
 
-    matches->resize(static_cast<size_t>(options_.max_num_matches));
+    matches->resize(static_cast<size_t>(options_.max_num_matches)); // 设置最大匹配数
 
-    const int num_matches = sift_match_gpu_.GetSiftMatch(
+    const int num_matches = sift_match_gpu_.GetSiftMatch( // 使用GPU加速执行SIFT特征匹配，返回匹配数量
         options_.max_num_matches,
-        reinterpret_cast<uint32_t(*)[2]>(matches->data()),
-        static_cast<float>(options_.max_distance),
-        static_cast<float>(options_.max_ratio),
-        options_.cross_check);
+        reinterpret_cast<uint32_t(*)[2]>(matches->data()), // 匹配对
+        static_cast<float>(options_.max_distance), // 最大距离阈值
+        static_cast<float>(options_.max_ratio), // 最大比率阈值
+        options_.cross_check); // 是否启用交叉验证
 
     if (num_matches < 0) {
       LOG(ERROR) << "Feature matching failed. This is probably caused by "
                     "insufficient GPU memory. Consider reducing the maximum "
                     "number of features and/or matches.";
-      matches->clear();
+      matches->clear(); // 如果匹配失败，清空匹配结果
     } else {
-      THROW_CHECK_LE(num_matches, matches->size());
-      matches->resize(num_matches);
+      THROW_CHECK_LE(num_matches, matches->size()); // 检查返回的匹配数量是否合适
+      matches->resize(num_matches); // 调整匹配结果的大小
     }
   }
 
@@ -1342,14 +1339,15 @@ class SiftGPUFeatureMatcher : public FeatureMatcher {
     static_assert(sizeof(FeatureKeypoint) == 6 * sizeof(float),
                   "Invalid keypoint format");
 
-    THROW_CHECK_NOTNULL(two_view_geometry);
-    two_view_geometry->inlier_matches.clear();
+    THROW_CHECK_NOTNULL(two_view_geometry); // 确保two_view_geometry不为空
+    two_view_geometry->inlier_matches.clear(); // 清空原有的匹配
 
     std::lock_guard<std::mutex> lock(
-        *sift_match_gpu_mutexes_[sift_match_gpu_.gpu_index]);
+        *sift_match_gpu_mutexes_[sift_match_gpu_.gpu_index]); // 使用锁保护GPU资源访问
 
-    constexpr size_t kFeatureShapeNumElems = 4;
+    constexpr size_t kFeatureShapeNumElems = 4; // 特征点形状的元素数
 
+    // 设置描述子和关键点位置
     if (descriptors1 != nullptr) {
       THROW_CHECK_NOTNULL(keypoints1);
       THROW_CHECK_EQ(descriptors1->rows(), keypoints1->size());
@@ -1377,7 +1375,8 @@ class SiftGPUFeatureMatcher : public FeatureMatcher {
           reinterpret_cast<const float*>(keypoints2->data()),
           kFeatureShapeNumElems);
     }
-
+    
+    // 获取基础矩阵 F 或单应性矩阵 H
     Eigen::Matrix<float, 3, 3, Eigen::RowMajor> F;
     Eigen::Matrix<float, 3, 3, Eigen::RowMajor> H;
     float* F_ptr = nullptr;
